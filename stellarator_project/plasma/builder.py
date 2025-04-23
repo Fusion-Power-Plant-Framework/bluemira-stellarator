@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from bluemira.base.builder import Builder
 from bluemira.base.components import Component, PhysicalComponent
+from bluemira.codes._freecadapi import fix_shape  # noqa: PLC2701
 from bluemira.display.palettes import BLUE_PALETTE
+from bluemira.geometry.face import BluemiraFace
 from bluemira.geometry.shell import BluemiraShell
 from bluemira.geometry.solid import BluemiraSolid
 from bluemira.geometry.tools import make_bsplinesurface
@@ -33,22 +35,28 @@ class PlasmaBuilder(Builder):
     def build_xyz(self) -> PhysicalComponent:
         """Build the plasma."""
         # Create a plasma surface from NURBS surface data
-        plasma_surface = BluemiraSolid(
-            BluemiraShell(
-                make_bsplinesurface(
-                    poles=self.s_data.poles2d,
-                    mults_u=self.s_data.mults_u,
-                    mults_v=self.s_data.mults_v,
-                    knot_vector_u=self.s_data.internal_knot_vector_u,
-                    knot_vector_v=self.s_data.internal_knot_vector_v,
-                    degree_u=self.s_data.degree_u,
-                    degree_v=self.s_data.degree_v,
-                    weights=self.s_data.weights_reshaped,
-                    periodic=False,
-                    check_rational=False,
-                )
-            )
+        face_tube = make_bsplinesurface(
+            poles=self.s_data.poles2d,
+            mults_u=self.s_data.mults_u,
+            mults_v=self.s_data.mults_v,
+            knot_vector_u=self.s_data.internal_knot_vector_u,
+            knot_vector_v=self.s_data.internal_knot_vector_v,
+            degree_u=self.s_data.degree_u,
+            degree_v=self.s_data.degree_v,
+            weights=self.s_data.weights_reshaped,
+            periodic=False,
+            check_rational=False,
         )
+        faces = [
+            BluemiraFace(wire)
+            for wire in sorted(face_tube.edges, key=lambda edge: edge.length)[:2]
+        ]
+        faces.insert(1, face_tube)
+
+        plasma_surface = BluemiraSolid(BluemiraShell(faces))
+
+        if not plasma_surface.is_valid():
+            fix_shape(plasma_surface._shape)  # noqa: SLF001
 
         component = PhysicalComponent("LCFS", plasma_surface)
         component.display_cad_options.color = BLUE_PALETTE["PL"]
